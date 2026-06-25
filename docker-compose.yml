@@ -1,0 +1,94 @@
+# SignalOps local infrastructure
+# ponytail: app runs locally with pnpm dev; only data services are containerized.
+# This avoids slow Docker builds and keeps hot reload native.
+# To dockerize the app later, add a Dockerfile and an `app` service.
+
+services:
+  # OLTP: operational data (events, machines, users, alerts)
+  postgres-oltp:
+    image: postgres:17-alpine
+    container_name: signalops-postgres-oltp
+    environment:
+      POSTGRES_USER: signalops
+      POSTGRES_PASSWORD: signalops
+      POSTGRES_DB: signalops_oltp
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"          # Required for Debezium CDC
+      - "-c"
+      - "max_wal_senders=10"         # Allow replication connections
+      - "-c"
+      - "max_replication_slots=10"   # Allow Debezium replication slot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_oltp_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signalops -d signalops_oltp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # OLAP: analytics data (materialized views, KPIs, aggregates)
+  postgres-olap:
+    image: postgres:17-alpine
+    container_name: signalops-postgres-olap
+    environment:
+      POSTGRES_USER: signalops
+      POSTGRES_PASSWORD: signalops
+      POSTGRES_DB: signalops_olap
+    ports:
+      - "5433:5432"                  # Different host port to avoid conflict
+    volumes:
+      - postgres_olap_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signalops -d signalops_olap"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Kafka in KRaft mode: no ZooKeeper needed
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: signalops-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: signalops-kafka-cluster
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Debezium CDC: reads PostgreSQL WAL and publishes change events to Kafka
+  debezium:
+    image: debezium/connect:3.1
+    container_name: signalops-debezium
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: signalops-debezium-connect
+      CONFIG_STORAGE_TOPIC: signalops_debezium_configs
+      OFFSET_STORAGE_TOPIC: signalops_debezium_offsets
+      STATUS_STORAGE_TOPIC: signalops_debezium_status
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres-oltp:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+volumes:
+  postgres_oltp_data:
+  postgres_olap_data:
