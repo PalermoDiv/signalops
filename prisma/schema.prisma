@@ -1,0 +1,119 @@
+// ponytail: minimal MVP schema. Add Better Auth tables and more indexes as needed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+model Organization {
+  id String @id @default(uuid())
+  name String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  machines Machine[]
+  events Event[]
+  alerts Alert[]
+
+  @@map("organizations")
+}
+
+model Machine {
+  id String @id @default(uuid())
+  organizationId String @map("organization_id")
+  name String
+  status MachineStatus @default(OFFLINE)
+  location String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  events Event[]
+  alerts Alert[]
+
+  @@index([organizationId])
+  @@map("machines")
+}
+
+model Event {
+  id String @id @default(uuid())
+  organizationId String @map("organization_id")
+  machineId String @map("machine_id")
+  type EventType
+  payload Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  machine Machine @relation(fields: [machineId], references: [id])
+
+  @@index([organizationId, occurredAt])
+  @@index([machineId, occurredAt])
+  @@map("events")
+}
+
+model Alert {
+  id String @id @default(uuid())
+  organizationId String @map("organization_id")
+  machineId String? @map("machine_id")
+  type AlertType
+  severity AlertSeverity
+  message String
+  status AlertStatus @default(OPEN)
+  createdAt DateTime @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  machine Machine? @relation(fields: [machineId], references: [id])
+
+  @@index([organizationId, status])
+  @@map("alerts")
+}
+
+enum MachineStatus {
+  ONLINE
+  OFFLINE
+  RUNNING
+  ERROR
+
+  @@map("machine_status")
+}
+
+enum EventType {
+  MACHINE_STARTED
+  MACHINE_STOPPED
+  MACHINE_ERROR
+  TEMPERATURE_RECORDED
+  PRODUCTION_COMPLETED
+
+  @@map("event_type")
+}
+
+enum AlertType {
+  MACHINE_OVERHEATING
+  EXCESSIVE_DOWNTIME
+  HIGH_ERROR_RATE
+
+  @@map("alert_type")
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("alert_severity")
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+  ACKNOWLEDGED
+
+  @@map("alert_status")
+}
