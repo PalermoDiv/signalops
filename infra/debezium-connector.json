@@ -1,0 +1,21 @@
+{
+  "name": "signalops-oltp-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres-oltp",
+    "database.port": "5432",
+    "database.user": "signalops",
+    "database.password": "signalops",
+    "database.dbname": "signalops_oltp",
+    "topic.prefix": "signalops",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium",
+    "publication.name": "dbz_publication",
+    "publication.autocreate.mode": "disabled",
+    "table.include.list": "public.events",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "string",
+    "time.precision.mode": "connect",
+    "tombstones.on.delete": "false"
+  }
+}
