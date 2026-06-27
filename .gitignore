@@ -46,6 +46,7 @@ AGENTS.md
 # local skill files
 LearningSkill.md
 
-# markdown files (README only is committed)
+# markdown files (README and developer docs are committed)
 *.md
 !README.md
+!COMMANDS.md
