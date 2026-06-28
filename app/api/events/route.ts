@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { EventType } from "@prisma/client";
 
 const EVENT_TYPES: EventType[] = [
@@ -11,14 +12,24 @@ const EVENT_TYPES: EventType[] = [
 ];
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const session = await auth.api.getSession({
+    headers: request.headers,
+  });
 
-  if (!body.organizationId || typeof body.organizationId !== "string") {
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const organizationId = session.session.activeOrganizationId;
+
+  if (!organizationId) {
     return NextResponse.json(
-      { error: "organizationId is required" },
-      { status: 400 }
+      { error: "No active organization" },
+      { status: 403 }
     );
   }
+
+  const body = await request.json();
 
   if (!body.machineId || typeof body.machineId !== "string") {
     return NextResponse.json(
@@ -34,9 +45,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // ponytail: verify the machine belongs to the user's active organization.
+  const machine = await prisma.machine.findFirst({
+    where: {
+      id: body.machineId,
+      organizationId,
+    },
+  });
+
+  if (!machine) {
+    return NextResponse.json(
+      { error: "Machine not found in your organization" },
+      { status: 404 }
+    );
+  }
+
   const event = await prisma.event.create({
     data: {
-      organizationId: body.organizationId,
+      organizationId,
       machineId: body.machineId,
       type: body.type,
       payload: body.payload ?? {},

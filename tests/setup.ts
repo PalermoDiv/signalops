@@ -73,7 +73,7 @@ function runMigrations() {
 
 export async function resetDatabase() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE organizations, machines, events, alerts RESTART IDENTITY CASCADE;`
+    `TRUNCATE TABLE "user", session, account, verification, organization, member, invitation, machines, events, alerts RESTART IDENTITY CASCADE;`
   );
 }
 

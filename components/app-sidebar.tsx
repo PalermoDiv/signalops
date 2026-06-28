@@ -11,6 +11,7 @@ import {
   Factory,
 } from "lucide-react";
 
+import { SignOutButton } from "@/components/sign-out-button";
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +25,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { useOrganization } from "@/app/organization-provider";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -33,9 +33,12 @@ const navigation = [
   { name: "Alerts", href: "/alerts", icon: Bell },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({
+  organization,
+}: {
+  organization: { id: string; name: string };
+}) {
   const pathname = usePathname();
-  const organization = useOrganization();
 
   return (
     <Sidebar collapsible="icon">
@@ -87,6 +90,7 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            <SignOutButton />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarFooter>

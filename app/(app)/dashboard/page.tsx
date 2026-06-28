@@ -6,19 +6,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { getCurrentOrganization } from "@/lib/organization";
 
 export const metadata = {
   title: "Dashboard — SignalOps",
 };
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const organization = await getCurrentOrganization();
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Operations Overview</h1>
         <p className="text-muted-foreground">
-          Real-time status of your manufacturing floor.
+          Real-time status of {organization.name}.
         </p>
       </div>
 

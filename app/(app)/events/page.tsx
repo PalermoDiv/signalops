@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { LiveRefresh } from "../../live-refresh";
+import { getCurrentOrganizationId } from "@/lib/organization";
 
 export const dynamic = "force-dynamic";
 
 export default async function EventsPage() {
+  const organizationId = await getCurrentOrganizationId();
+
   const events = await prisma.event.findMany({
+    where: { organizationId },
     orderBy: { occurredAt: "desc" },
     take: 20,
     include: {
