@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OrganizationProvider } from "./organization-provider";
+import { ThemeProvider } from "./theme-provider";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -57,11 +58,13 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          <OrganizationProvider organization={organization}>
-            {children}
-          </OrganizationProvider>
-        </TooltipProvider>
+        <ThemeProvider>
+          <TooltipProvider>
+            <OrganizationProvider organization={organization}>
+              {children}
+            </OrganizationProvider>
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

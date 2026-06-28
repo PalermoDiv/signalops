@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Activity,
   BarChart3,
@@ -33,6 +34,7 @@ export default function HomePage() {
             >
               Dashboard
             </Link>
+            <ThemeToggle />
             <Link
               href="/dashboard"
               className={cn(buttonVariants({ size: "sm" }))}
