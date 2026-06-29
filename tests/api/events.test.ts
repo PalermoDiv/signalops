@@ -2,111 +2,11 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "@/app/api/events/route";
 import { prisma } from "@/lib/prisma";
 import { resetDatabase } from "@/tests/setup";
-import { auth } from "@/lib/auth";
-
-async function authRequest(
-  path: string,
-  method: string,
-  body: object,
-  cookie?: string
-) {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (cookie) headers.set("cookie", cookie);
-
-  const request = new Request(`http://localhost:3000/api/auth${path}`, {
-    method,
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  const response = await auth.handler(request);
-  const setCookie = response.headers.get("set-cookie") || undefined;
-  const responseBody = response.status === 204 ? null : await response.json();
-
-  return { response, body: responseBody, setCookie };
-}
-
-function extractSessionToken(setCookie?: string): string | undefined {
-  if (!setCookie) return undefined;
-  const match = setCookie.match(/better-auth\.session_token=([^;]+)/);
-  return match?.[1];
-}
-
-async function createAuthenticatedUser() {
-  const timestamp = Date.now();
-  const email = `test-${timestamp}@example.com`;
-  const password = "password123";
-  const name = "Test User";
-
-  const signUp = await authRequest("/sign-up/email", "POST", {
-    email,
-    password,
-    name,
-  });
-
-  expect(signUp.response.status).toBe(200);
-  const token = extractSessionToken(signUp.setCookie);
-  if (!token) {
-    throw new Error("Sign up failed: no session cookie returned");
-  }
-
-  const cookie = `better-auth.session_token=${token}`;
-
-  const createOrg = await authRequest(
-    "/organization/create",
-    "POST",
-    {
-      name: "Test Organization",
-      slug: `test-org-${timestamp}`,
-    },
-    cookie
-  );
-
-  expect(createOrg.response.status).toBe(200);
-
-  const setActive = await authRequest(
-    "/organization/set-active",
-    "POST",
-    {
-      organizationId: createOrg.body.id,
-    },
-    cookie
-  );
-
-  expect(setActive.response.status).toBe(200);
-
-  return {
-    token,
-    organizationId: createOrg.body.id as string,
-    userId: signUp.body.user.id as string,
-  };
-}
-
-async function createMachine(organizationId: string) {
-  return prisma.machine.create({
-    data: {
-      organizationId,
-      name: "Test Machine",
-      location: "Building 1",
-    },
-  });
-}
-
-function createRequest(body: object, token?: string) {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (token) {
-    headers.cookie = `better-auth.session_token=${token}`;
-  }
-
-  return new Request("http://localhost:3000/api/events", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-}
+import {
+  createAuthenticatedUser,
+  createMachine,
+  createEventRequest,
+} from "@/tests/helpers";
 
 describe("POST /api/events", () => {
   beforeEach(async () => {
@@ -117,7 +17,7 @@ describe("POST /api/events", () => {
     const { token, organizationId } = await createAuthenticatedUser();
     const machine = await createMachine(organizationId);
 
-    const request = createRequest(
+    const request = createEventRequest(
       {
         machineId: machine.id,
         type: "MACHINE_STARTED",
@@ -146,7 +46,7 @@ describe("POST /api/events", () => {
     const { token, organizationId } = await createAuthenticatedUser();
     const machine = await createMachine(organizationId);
 
-    const request = createRequest(
+    const request = createEventRequest(
       {
         machineId: machine.id,
         type: "MACHINE_STOPPED",
@@ -162,7 +62,7 @@ describe("POST /api/events", () => {
   });
 
   it("rejects unauthenticated requests", async () => {
-    const request = createRequest({
+    const request = createEventRequest({
       machineId: "00000000-0000-0000-0000-000000000002",
       type: "MACHINE_STARTED",
     });
@@ -177,7 +77,7 @@ describe("POST /api/events", () => {
   it("rejects a request without machineId", async () => {
     const { token } = await createAuthenticatedUser();
 
-    const request = createRequest(
+    const request = createEventRequest(
       {
         type: "MACHINE_STARTED",
       },
@@ -195,7 +95,7 @@ describe("POST /api/events", () => {
     const { token, organizationId } = await createAuthenticatedUser();
     const machine = await createMachine(organizationId);
 
-    const request = createRequest(
+    const request = createEventRequest(
       {
         machineId: machine.id,
         type: "INVALID_TYPE",
@@ -211,9 +111,8 @@ describe("POST /api/events", () => {
   });
 
   it("rejects an event for a machine outside the user's organization", async () => {
-    const { token, organizationId } = await createAuthenticatedUser();
+    const { token } = await createAuthenticatedUser();
 
-    // Create a machine in a different organization
     const otherOrg = await prisma.organization.create({
       data: {
         id: crypto.randomUUID(),
@@ -229,7 +128,7 @@ describe("POST /api/events", () => {
       },
     });
 
-    const request = createRequest(
+    const request = createEventRequest(
       {
         machineId: otherMachine.id,
         type: "MACHINE_STARTED",
@@ -242,5 +141,62 @@ describe("POST /api/events", () => {
 
     expect(response.status).toBe(404);
     expect(body.error).toBe("Machine not found in your organization");
+  });
+
+  it("updates machine status based on the event type", async () => {
+    const { token, organizationId } = await createAuthenticatedUser();
+    const machine = await createMachine(organizationId);
+
+    const startResponse = await POST(
+      createEventRequest(
+        { machineId: machine.id, type: "MACHINE_STARTED" },
+        token
+      )
+    );
+    expect(startResponse.status).toBe(201);
+
+    const running = await prisma.machine.findUnique({
+      where: { id: machine.id },
+    });
+    expect(running?.status).toBe("RUNNING");
+
+    const stopResponse = await POST(
+      createEventRequest(
+        { machineId: machine.id, type: "MACHINE_STOPPED" },
+        token
+      )
+    );
+    expect(stopResponse.status).toBe(201);
+
+    const offline = await prisma.machine.findUnique({
+      where: { id: machine.id },
+    });
+    expect(offline?.status).toBe("OFFLINE");
+  });
+
+  it("creates an overheating alert when temperature exceeds the threshold", async () => {
+    const { token, organizationId } = await createAuthenticatedUser();
+    const machine = await createMachine(organizationId);
+
+    const response = await POST(
+      createEventRequest(
+        {
+          machineId: machine.id,
+          type: "TEMPERATURE_RECORDED",
+          payload: { temperature: 95 },
+        },
+        token
+      )
+    );
+
+    expect(response.status).toBe(201);
+
+    const alerts = await prisma.alert.findMany({
+      where: { organizationId, machineId: machine.id },
+    });
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].type).toBe("MACHINE_OVERHEATING");
+    expect(alerts[0].severity).toBe("CRITICAL");
   });
 });

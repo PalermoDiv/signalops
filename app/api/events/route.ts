@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { EventType } from "@prisma/client";
+import {
+  evaluateAlertRules,
+  updateMachineStatusFromEvent,
+} from "@/lib/operations";
 
 const EVENT_TYPES: EventType[] = [
   "MACHINE_STARTED",
@@ -69,6 +73,17 @@ export async function POST(request: Request) {
       occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
     },
   });
+
+  // ponytail: evaluate rules synchronously so the dashboard reflects changes immediately.
+  // Move to async worker when event volume or rule complexity grows.
+  await updateMachineStatusFromEvent(event.machineId, event.type);
+  await evaluateAlertRules(
+    event.organizationId,
+    event.machineId,
+    event.type,
+    event.payload,
+    event.occurredAt
+  );
 
   return NextResponse.json(event, { status: 201 });
 }
