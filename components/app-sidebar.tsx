@@ -9,6 +9,7 @@ import {
   Cog,
   Bell,
   Factory,
+  FileBarChart,
 } from "lucide-react";
 
 import { SignOutButton } from "@/components/sign-out-button";
@@ -31,6 +32,7 @@ const navigation = [
   { name: "Events", href: "/events", icon: Zap },
   { name: "Machines", href: "/machines", icon: Cog },
   { name: "Alerts", href: "/alerts", icon: Bell },
+  { name: "Reports", href: "/reports", icon: FileBarChart },
 ];
 
 export function AppSidebar({

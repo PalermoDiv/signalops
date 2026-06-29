@@ -1,9 +1,18 @@
 import { PrismaClient } from "@prisma/client";
 import { Client } from "pg";
 import { execSync } from "child_process";
+import {
+  ensureOlapSchema,
+  olapPool,
+  resetOlapTables,
+} from "@/lib/olap";
 
 const rawTestUrl =
   process.env.TEST_DATABASE_URL ?? deriveTestUrl(process.env.DATABASE_URL);
+
+const rawOlapTestUrl =
+  process.env.TEST_OLAP_DATABASE_URL ??
+  deriveTestUrl(process.env.OLAP_DATABASE_URL);
 
 if (!rawTestUrl) {
   throw new Error(
@@ -11,8 +20,15 @@ if (!rawTestUrl) {
   );
 }
 
+if (!rawOlapTestUrl) {
+  throw new Error(
+    "TEST_OLAP_DATABASE_URL or OLAP_DATABASE_URL must be set to run tests."
+  );
+}
+
 // Point Prisma at the test database for the rest of the process.
 process.env.DATABASE_URL = rawTestUrl;
+process.env.OLAP_DATABASE_URL = rawOlapTestUrl;
 
 export const prisma = new PrismaClient();
 
@@ -32,8 +48,9 @@ function parsePostgresUrl(url: string) {
   };
 }
 
-async function ensureTestDatabaseExists() {
-  const { host, port, user, password, database } = parsePostgresUrl(rawTestUrl);
+async function ensureTestDatabaseExists(databaseUrl: string) {
+  const { host, port, user, password, database } =
+    parsePostgresUrl(databaseUrl);
 
   const adminClient = new Client({
     host,
@@ -75,11 +92,14 @@ export async function resetDatabase() {
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE "user", session, account, verification, organization, member, invitation, machines, events, alerts RESTART IDENTITY CASCADE;`
   );
+  await resetOlapTables();
 }
 
 beforeAll(async () => {
-  await ensureTestDatabaseExists();
+  await ensureTestDatabaseExists(rawTestUrl);
   runMigrations();
+  await ensureTestDatabaseExists(rawOlapTestUrl);
+  await ensureOlapSchema();
 });
 
 beforeEach(async () => {
@@ -88,4 +108,5 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await prisma.$disconnect();
+  await olapPool.end();
 });
