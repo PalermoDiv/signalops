@@ -1,11 +1,26 @@
 import { Pool } from "pg";
 import { prisma } from "@/lib/prisma";
+import { getCached, setCached, invalidatePattern } from "@/lib/redis";
 
 const connectionString =
   process.env.OLAP_DATABASE_URL ??
   "postgresql://signalops:signalops@localhost:5435/signalops_olap";
 
 export const olapPool = new Pool({ connectionString });
+
+const REPORT_CACHE_TTL_SECONDS = 5 * 60;
+
+function reportCacheKey(
+  organizationId: string,
+  type: "daily" | "weekly" | "monthly",
+  period: number
+) {
+  return `reports:${organizationId}:${type}:${period}`;
+}
+
+export async function invalidateReportsCache(organizationId: string) {
+  await invalidatePattern(`reports:${organizationId}:*`);
+}
 
 export async function ensureOlapSchema() {
   await olapPool.query(`
@@ -183,6 +198,27 @@ function parseDate(dateText: string): Date {
 }
 
 export async function getDailyReport(organizationId: string, days = 14) {
+  const cacheKey = reportCacheKey(organizationId, "daily", days);
+  const cached = await getCached<DailyReportRow[]>(cacheKey);
+  if (cached) return cached.map((row) => ({ ...row, date: parseDate(row.date) }));
+
+  const result = await queryDailyReport(organizationId, days);
+  await setCached(cacheKey, result, REPORT_CACHE_TTL_SECONDS);
+  return result.map((row) => ({ ...row, date: parseDate(row.date) }));
+}
+
+type DailyReportRow = {
+  date: string;
+  totalUnits: number;
+  totalDowntimeMinutes: number;
+  downtimeIncidents: number;
+  errorCount: number;
+};
+
+async function queryDailyReport(
+  organizationId: string,
+  days: number
+): Promise<DailyReportRow[]> {
   const { rows } = await olapPool.query(
     `
       SELECT
@@ -211,7 +247,7 @@ export async function getDailyReport(organizationId: string, days = 14) {
   );
 
   return rows.map((row) => ({
-    date: parseDate(row.date_text),
+    date: row.date_text as string,
     totalUnits: Number(row.total_units),
     totalDowntimeMinutes: Number(row.total_downtime_minutes),
     downtimeIncidents: Number(row.downtime_incidents),
@@ -220,6 +256,27 @@ export async function getDailyReport(organizationId: string, days = 14) {
 }
 
 export async function getWeeklyReport(organizationId: string, weeks = 8) {
+  const cacheKey = reportCacheKey(organizationId, "weekly", weeks);
+  const cached = await getCached<WeeklyReportRow[]>(cacheKey);
+  if (cached) return cached.map((row) => ({ ...row, week: parseDate(row.week) }));
+
+  const result = await queryWeeklyReport(organizationId, weeks);
+  await setCached(cacheKey, result, REPORT_CACHE_TTL_SECONDS);
+  return result.map((row) => ({ ...row, week: parseDate(row.week) }));
+}
+
+type WeeklyReportRow = {
+  week: string;
+  totalUnits: number;
+  totalDowntimeMinutes: number;
+  downtimeIncidents: number;
+  errorCount: number;
+};
+
+async function queryWeeklyReport(
+  organizationId: string,
+  weeks: number
+): Promise<WeeklyReportRow[]> {
   const { rows } = await olapPool.query(
     `
       SELECT
@@ -249,7 +306,7 @@ export async function getWeeklyReport(organizationId: string, weeks = 8) {
   );
 
   return rows.map((row) => ({
-    week: parseDate(row.week_text),
+    week: row.week_text as string,
     totalUnits: Number(row.total_units),
     totalDowntimeMinutes: Number(row.total_downtime_minutes),
     downtimeIncidents: Number(row.downtime_incidents),
@@ -258,6 +315,28 @@ export async function getWeeklyReport(organizationId: string, weeks = 8) {
 }
 
 export async function getMonthlyReport(organizationId: string, months = 6) {
+  const cacheKey = reportCacheKey(organizationId, "monthly", months);
+  const cached = await getCached<MonthlyReportRow[]>(cacheKey);
+  if (cached)
+    return cached.map((row) => ({ ...row, month: parseDate(row.month) }));
+
+  const result = await queryMonthlyReport(organizationId, months);
+  await setCached(cacheKey, result, REPORT_CACHE_TTL_SECONDS);
+  return result.map((row) => ({ ...row, month: parseDate(row.month) }));
+}
+
+type MonthlyReportRow = {
+  month: string;
+  totalUnits: number;
+  totalDowntimeMinutes: number;
+  downtimeIncidents: number;
+  errorCount: number;
+};
+
+async function queryMonthlyReport(
+  organizationId: string,
+  months: number
+): Promise<MonthlyReportRow[]> {
   const { rows } = await olapPool.query(
     `
       SELECT
@@ -287,7 +366,7 @@ export async function getMonthlyReport(organizationId: string, months = 6) {
   );
 
   return rows.map((row) => ({
-    month: parseDate(row.month_text),
+    month: row.month_text as string,
     totalUnits: Number(row.total_units),
     totalDowntimeMinutes: Number(row.total_downtime_minutes),
     downtimeIncidents: Number(row.downtime_incidents),

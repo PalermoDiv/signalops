@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { metrics } from "@opentelemetry/api";
 import { prisma } from "@/lib/prisma";
+import { getCached, setCached } from "@/lib/redis";
 
 const meter = metrics.getMeter("signalops");
 const alertsCreatedCounter = meter.createCounter(
@@ -209,6 +210,19 @@ async function evaluateExcessiveDowntimeRule(
 }
 
 export async function getDashboardMetrics(organizationId: string) {
+  const cacheKey = `metrics:${organizationId}`;
+  const cached = await getCached<ReturnType<typeof computeDashboardMetrics>>(
+    cacheKey
+  );
+  if (cached) return cached;
+
+  const metrics = await computeDashboardMetrics(organizationId);
+  // ponytail: 30s TTL keeps the dashboard responsive while still feeling live.
+  await setCached(cacheKey, metrics, 30);
+  return metrics;
+}
+
+async function computeDashboardMetrics(organizationId: string) {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 

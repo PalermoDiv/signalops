@@ -3,6 +3,8 @@ import {
   evaluateAlertRules,
   updateMachineStatusFromEvent,
 } from "@/lib/operations";
+import { deleteCached } from "@/lib/redis";
+import { logger } from "@/lib/logger";
 import { EventType } from "@prisma/client";
 
 const MAX_RETRIES = 3;
@@ -43,6 +45,8 @@ export async function processEvent(row: NonNullable<DebeziumEvent["after"]>) {
     row.payload as Parameters<typeof evaluateAlertRules>[3],
     new Date(row.occurred_at)
   );
+  // ponytail: clear cached metrics so dashboards pick up async side effects quickly.
+  await deleteCached(`metrics:${row.organization_id}`);
 }
 
 function sleep(ms: number) {
@@ -73,10 +77,10 @@ export async function startWorker() {
       let parsed: ReturnType<typeof parseEvent>;
       try {
         parsed = parseEvent(JSON.parse(value));
-      } catch {
-        console.error("Failed to parse message, skipping:", value.slice(0, 200));
-        return;
-      }
+  } catch {
+    logger.error({ message: value.slice(0, 200) }, "Failed to parse message, skipping");
+    return;
+  }
 
       if (!parsed) return;
 
@@ -86,9 +90,14 @@ export async function startWorker() {
           return;
         } catch (error) {
           const isLast = attempt === MAX_RETRIES;
-          console.error(
-            `Processing failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}) for event ${parsed.id}:`,
-            error
+          logger.error(
+            {
+              attempt: attempt + 1,
+              maxAttempts: MAX_RETRIES + 1,
+              eventId: parsed.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Processing failed"
           );
 
           if (isLast) {
@@ -106,7 +115,7 @@ export async function startWorker() {
                 },
               ],
             });
-            console.error(`Sent event ${parsed.id} to DLQ`);
+            logger.error({ eventId: parsed.id }, "Sent event to DLQ");
             return;
           }
 
@@ -117,7 +126,7 @@ export async function startWorker() {
   });
 
   const shutdown = async () => {
-    console.log("Shutting down worker...");
+    logger.info("Shutting down worker...");
     await consumer.disconnect();
     await producer.disconnect();
     process.exit(0);
@@ -126,5 +135,5 @@ export async function startWorker() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  console.log(`Worker subscribed to ${EVENTS_TOPIC}`);
+  logger.info({ topic: EVENTS_TOPIC }, "Worker subscribed");
 }

@@ -3,6 +3,8 @@ import { metrics } from "@opentelemetry/api";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { EventType } from "@prisma/client";
+import { deleteCached } from "@/lib/redis";
+import { invalidateReportsCache } from "@/lib/olap";
 
 const meter = metrics.getMeter("signalops");
 const eventsIngestedCounter = meter.createCounter(
@@ -76,6 +78,10 @@ export async function POST(request: Request) {
       occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
     },
   });
+
+  // ponytail: invalidate cached dashboard metrics and reports so the UI stays fresh.
+  await deleteCached(`metrics:${organizationId}`);
+  await invalidateReportsCache(organizationId);
 
   // ponytail: machine status and alert rules are processed asynchronously by the worker
   // that consumes Debezium CDC events from Kafka. This keeps ingestion fast and decouples

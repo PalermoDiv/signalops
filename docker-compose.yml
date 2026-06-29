@@ -48,6 +48,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis: caching layer for dashboard metrics and reports
+  redis:
+    image: redis:7-alpine
+    container_name: signalops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # Kafka in KRaft mode: no ZooKeeper needed
   kafka:
     image: apache/kafka:4.0.0
@@ -106,6 +120,36 @@ services:
       - postgres-oltp
       - postgres-olap
 
+  # Next.js app (optional, production-like image). Start with:
+  #   docker compose --profile app up -d
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signalops-app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://signalops:signalops@postgres-oltp:5432/signalops_oltp"
+      OLAP_DATABASE_URL: "postgresql://signalops:signalops@postgres-olap:5432/signalops_olap"
+      REDIS_URL: "redis://redis:6379/0"
+      KAFKA_BROKERS: "kafka:19092"
+      BETTER_AUTH_URL: "http://localhost:3000"
+      NEXT_PUBLIC_BETTER_AUTH_URL: "http://localhost:3000"
+    depends_on:
+      postgres-oltp:
+        condition: service_healthy
+      postgres-olap:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    profiles:
+      - app
+
   # Grafana: observability dashboards
   grafana:
     image: grafana/grafana:latest
@@ -126,3 +170,4 @@ volumes:
   postgres_oltp_data:
   postgres_olap_data:
   grafana_data:
+  redis_data:

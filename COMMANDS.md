@@ -21,7 +21,14 @@ pnpm dev
 ```
 
 Open http://localhost:3000 for the landing page.  
-Open http://localhost:3000/dashboard for the app shell.
+Open http://localhost:3000/dashboard for the app shell.  
+Check http://localhost:3000/api/health for the health endpoint.
+
+To run the production Docker image instead of `pnpm dev`:
+
+```bash
+docker compose --profile app up -d
+```
 
 ---
 
@@ -42,10 +49,12 @@ Open http://localhost:3000/dashboard for the app shell.
 |---------|-----------|----------------|
 | PostgreSQL OLTP | `5434` | `signalops-postgres-oltp` |
 | PostgreSQL OLAP | `5435` | `signalops-postgres-olap` |
+| Redis | `6379` | `signalops-redis` |
 | Kafka | `9092` | `signalops-kafka` |
 | Debezium Connect | `8083` | `signalops-debezium` |
 | OpenTelemetry Collector | `4317` / `4318` / `8889` | `signalops-otel-collector` |
 | Grafana | `3001` | `signalops-grafana` |
+| Next.js app (optional `app` profile) | `3000` | `signalops-app` |
 
 ---
 
@@ -102,7 +111,7 @@ psql postgresql://signalops:signalops@localhost:5435/signalops_olap
 | `pnpm test:run` | Run tests once (CI mode) |
 | `pnpm worker` | Start the async event processor that consumes Kafka CDC events |
 
-Tests use the `signalops_test` database defined by `TEST_DATABASE_URL` in `.env`.
+Tests use the `signalops_test` database defined by `TEST_DATABASE_URL` in `.env`. Redis is disabled by default in tests; set `TEST_REDIS_URL` and start the Redis container to exercise the live cache tests.
 
 ---
 
@@ -193,6 +202,31 @@ docker exec -it signalops-kafka \
 
 ---
 
+## Redis
+
+Redis is used to cache dashboard metrics (30s TTL) and OLAP reports (5m TTL). The cache is invalidated when new events are ingested or reports are refreshed.
+
+### URLs
+
+| Tool | URL |
+|------|-----|
+| Redis | `redis://localhost:6379/0` |
+| Redis (tests) | `redis://localhost:6379/1` |
+
+### Check Redis
+
+```bash
+redis-cli -u redis://localhost:6379/0 ping
+```
+
+### Clear cache
+
+```bash
+redis-cli -u redis://localhost:6379/0 FLUSHDB
+```
+
+---
+
 ## Async event processing
 
 Event ingestion writes to the OLTP database and returns immediately. A separate worker process consumes Debezium CDC events from Kafka and applies side effects (machine status updates and alert rules).
@@ -219,6 +253,56 @@ curl -X POST http://localhost:8083/connectors \
 ```
 
 The connector config uses `publication.autocreate.mode: filtered`, so Debezium creates `dbz_publication` automatically.
+
+---
+
+## Production Docker image
+
+Build and run the Next.js app as a container:
+
+```bash
+# Build the image
+docker build -t signalops-app .
+
+# Run locally against the Docker Compose data services
+docker run -p 3000:3000 --env-file .env \
+  -e DATABASE_URL="postgresql://signalops:signalops@host.docker.internal:5434/signalops_oltp" \
+  -e OLAP_DATABASE_URL="postgresql://signalops:signalops@host.docker.internal:5435/signalops_olap" \
+  -e REDIS_URL="redis://host.docker.internal:6379/0" \
+  -e KAFKA_BROKERS="host.docker.internal:9092" \
+  signalops-app
+```
+
+Or use the optional `app` profile in Docker Compose:
+
+```bash
+docker compose --profile app up -d
+```
+
+The `app` service overrides connection URLs to use the container network names (`postgres-oltp`, `postgres-olap`, `redis`, `kafka`).
+
+---
+
+## Health checks
+
+The app exposes a health endpoint that checks OLTP, OLAP, Redis, and Kafka:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+It returns HTTP `200` when OLTP and OLAP are reachable, and `503` otherwise. Redis and Kafka failures are logged but do not make the app unhealthy.
+
+---
+
+## Logging
+
+SignalOps uses [pino](https://github.com/pinojs/pino) for structured logging.
+
+- Development: pretty-printed logs (`pino-pretty`).
+- Production: JSON logs via `pnpm start` / the Docker image.
+
+Set `LOG_LEVEL` to control verbosity (`trace`, `debug`, `info`, `warn`, `error`, `fatal`).
 
 ---
 
@@ -276,6 +360,9 @@ Required in `.env`:
 DATABASE_URL="postgresql://signalops:signalops@localhost:5434/signalops_oltp"
 TEST_DATABASE_URL="postgresql://signalops:signalops@localhost:5434/signalops_test"
 OLAP_DATABASE_URL="postgresql://signalops:signalops@localhost:5435/signalops_olap"
+
+REDIS_URL="redis://localhost:6379/0"
+TEST_REDIS_URL="redis://localhost:6379/1"
 
 OTEL_SERVICE_NAME="signalops"
 OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"

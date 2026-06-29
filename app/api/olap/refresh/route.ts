@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import {
   ensureOlapSchema,
   refreshOlapAggregates,
+  invalidateReportsCache,
 } from "@/lib/olap";
 
 const meter = metrics.getMeter("signalops");
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
   // ponytail: ensure schema exists on first refresh. In production this belongs in a migration.
   await ensureOlapSchema();
   await refreshOlapAggregates(organizationId);
+  await invalidateReportsCache(organizationId);
 
   reportRefreshesCounter.add(1, {
     organization_id: organizationId,

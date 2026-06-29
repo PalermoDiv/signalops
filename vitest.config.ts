@@ -10,6 +10,11 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts"],
     fileParallelism: false,
+    // ponytail: disable Redis by default in tests so the suite passes without
+    // the container. Redis-specific tests spin up their own client.
+    env: {
+      REDIS_URL: "",
+    },
   },
   resolve: {
     alias: {
