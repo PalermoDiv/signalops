@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { metrics } from "@opentelemetry/api";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { EventType } from "@prisma/client";
@@ -6,6 +7,12 @@ import {
   evaluateAlertRules,
   updateMachineStatusFromEvent,
 } from "@/lib/operations";
+
+const meter = metrics.getMeter("signalops");
+const eventsIngestedCounter = meter.createCounter(
+  "signalops.events.ingested.total",
+  { description: "Total number of events ingested" }
+);
 
 const EVENT_TYPES: EventType[] = [
   "MACHINE_STARTED",
@@ -84,6 +91,11 @@ export async function POST(request: Request) {
     event.payload,
     event.occurredAt
   );
+
+  eventsIngestedCounter.add(1, {
+    "event.type": event.type,
+    "organization.id": event.organizationId,
+  });
 
   return NextResponse.json(event, { status: 201 });
 }

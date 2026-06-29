@@ -6,7 +6,14 @@ import {
   MachineStatus,
   Prisma,
 } from "@prisma/client";
+import { metrics } from "@opentelemetry/api";
 import { prisma } from "@/lib/prisma";
+
+const meter = metrics.getMeter("signalops");
+const alertsCreatedCounter = meter.createCounter(
+  "signalops.alerts.created.total",
+  { description: "Total number of alerts created" }
+);
 
 const OVERHEAT_THRESHOLD = 80;
 const OVERHEAT_CRITICAL_THRESHOLD = 90;
@@ -98,6 +105,12 @@ async function evaluateOverheatingRule(
       message: `Machine temperature ${temperature}°C exceeds ${OVERHEAT_THRESHOLD}°C threshold`,
     },
   });
+
+  alertsCreatedCounter.add(1, {
+    alert_type: AlertType.MACHINE_OVERHEATING,
+    severity: temperature > OVERHEAT_CRITICAL_THRESHOLD ? "CRITICAL" : "HIGH",
+    organization_id: organizationId,
+  });
 }
 
 async function evaluateHighErrorRateRule(
@@ -140,6 +153,12 @@ async function evaluateHighErrorRateRule(
       message: `Machine reported ${errorCount} errors in the last hour`,
     },
   });
+
+  alertsCreatedCounter.add(1, {
+    alert_type: AlertType.HIGH_ERROR_RATE,
+    severity: AlertSeverity.HIGH,
+    organization_id: organizationId,
+  });
 }
 
 async function evaluateExcessiveDowntimeRule(
@@ -167,17 +186,25 @@ async function evaluateExcessiveDowntimeRule(
 
   if (downtimeMinutes <= DOWNTIME_MINUTES_THRESHOLD) return;
 
+  const severity =
+    downtimeMinutes > DOWNTIME_CRITICAL_MINUTES_THRESHOLD
+      ? AlertSeverity.CRITICAL
+      : AlertSeverity.MEDIUM;
+
   await prisma.alert.create({
     data: {
       organizationId,
       machineId,
       type: AlertType.EXCESSIVE_DOWNTIME,
-      severity:
-        downtimeMinutes > DOWNTIME_CRITICAL_MINUTES_THRESHOLD
-          ? AlertSeverity.CRITICAL
-          : AlertSeverity.MEDIUM,
+      severity,
       message: `Machine was down for ${Math.round(downtimeMinutes)} minutes`,
     },
+  });
+
+  alertsCreatedCounter.add(1, {
+    alert_type: AlertType.EXCESSIVE_DOWNTIME,
+    severity,
+    organization_id: organizationId,
   });
 }
 

@@ -91,6 +91,38 @@ services:
       kafka:
         condition: service_healthy
 
+  # OpenTelemetry Collector: receives OTLP from the app and exposes Prometheus metrics
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: signalops-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "8889:8889"    # Prometheus exporter
+    depends_on:
+      - postgres-oltp
+      - postgres-olap
+
+  # Grafana: observability dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: signalops-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: signalops
+      GF_SECURITY_ADMIN_PASSWORD: signalops
+      GF_INSTALL_PLUGINS: ""
+    depends_on:
+      - otel-collector
+
 volumes:
   postgres_oltp_data:
   postgres_olap_data:
+  grafana_data:

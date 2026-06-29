@@ -44,6 +44,8 @@ Open http://localhost:3000/dashboard for the app shell.
 | PostgreSQL OLAP | `5435` | `signalops-postgres-olap` |
 | Kafka | `9092` | `signalops-kafka` |
 | Debezium Connect | `8083` | `signalops-debezium` |
+| OpenTelemetry Collector | `4317` / `4318` / `8889` | `signalops-otel-collector` |
+| Grafana | `3001` | `signalops-grafana` |
 
 ---
 
@@ -190,6 +192,34 @@ docker exec -it signalops-kafka \
 
 ---
 
+## Observability
+
+SignalOps exports OpenTelemetry metrics and traces to the local collector.
+
+### URLs
+
+| Tool | URL | Default credentials |
+|------|-----|---------------------|
+| Grafana | http://localhost:3001 | `signalops` / `signalops` |
+| OTLP gRPC | http://localhost:4317 | — |
+| OTLP HTTP | http://localhost:4318 | — |
+| Prometheus scrape | http://localhost:8889 | — |
+
+### Pre-built dashboard
+
+A `SignalOps App` dashboard is provisioned automatically. It shows:
+
+- HTTP request rate
+- Average request duration
+- Events ingested rate
+- Total events ingested
+
+### Collector configuration
+
+`otel-collector-config.yaml` receives OTLP and exposes Prometheus metrics on port `8889`. The Grafana data source is provisioned in `grafana/provisioning/`.
+
+---
+
 ## Git workflow
 
 ```bash
@@ -216,6 +246,11 @@ Required in `.env`:
 DATABASE_URL="postgresql://signalops:signalops@localhost:5434/signalops_oltp"
 TEST_DATABASE_URL="postgresql://signalops:signalops@localhost:5434/signalops_test"
 OLAP_DATABASE_URL="postgresql://signalops:signalops@localhost:5435/signalops_olap"
+
+OTEL_SERVICE_NAME="signalops"
+OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="http://localhost:4318/v1/traces"
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="http://localhost:4318/v1/metrics"
 ```
 
 `.env` is gitignored. Do not commit it.

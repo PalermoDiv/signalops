@@ -1,0 +1,108 @@
+{
+  "id": null,
+  "uid": "signalops-app",
+  "title": "SignalOps App",
+  "tags": ["signalops"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Events Ingested (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(signalops_events_ingested_total[1m]))",
+          "legendFormat": "events/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "evps",
+          "min": 0
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Total Events Ingested",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(signalops_events_ingested_total)",
+          "legendFormat": "events"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Alerts Created (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(signalops_alerts_created_total[1m]))",
+          "legendFormat": "alerts/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "alerts/sec",
+          "min": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Total Alerts Created",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(signalops_alerts_created_total)",
+          "legendFormat": "alerts"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Report Refreshes (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum(rate(signalops_reports_refreshes_total[1m]))",
+          "legendFormat": "refreshes/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "refreshes/sec",
+          "min": 0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Event Loop Utilization",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "nodejs_eventloop_utilization_ratio",
+          "legendFormat": "utilization"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    }
+  ]
+}
