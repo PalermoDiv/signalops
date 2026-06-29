@@ -3,10 +3,6 @@ import { metrics } from "@opentelemetry/api";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { EventType } from "@prisma/client";
-import {
-  evaluateAlertRules,
-  updateMachineStatusFromEvent,
-} from "@/lib/operations";
 
 const meter = metrics.getMeter("signalops");
 const eventsIngestedCounter = meter.createCounter(
@@ -81,17 +77,9 @@ export async function POST(request: Request) {
     },
   });
 
-  // ponytail: evaluate rules synchronously so the dashboard reflects changes immediately.
-  // Move to async worker when event volume or rule complexity grows.
-  await updateMachineStatusFromEvent(event.machineId, event.type);
-  await evaluateAlertRules(
-    event.organizationId,
-    event.machineId,
-    event.type,
-    event.payload,
-    event.occurredAt
-  );
-
+  // ponytail: machine status and alert rules are processed asynchronously by the worker
+  // that consumes Debezium CDC events from Kafka. This keeps ingestion fast and decouples
+  // event producers from consumers.
   eventsIngestedCounter.add(1, {
     "event.type": event.type,
     "organization.id": event.organizationId,

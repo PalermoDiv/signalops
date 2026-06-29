@@ -143,38 +143,25 @@ describe("POST /api/events", () => {
     expect(body.error).toBe("Machine not found in your organization");
   });
 
-  it("updates machine status based on the event type", async () => {
+  it("does not update machine status synchronously", async () => {
     const { token, organizationId } = await createAuthenticatedUser();
     const machine = await createMachine(organizationId);
 
-    const startResponse = await POST(
+    const response = await POST(
       createEventRequest(
         { machineId: machine.id, type: "MACHINE_STARTED" },
         token
       )
     );
-    expect(startResponse.status).toBe(201);
+    expect(response.status).toBe(201);
 
-    const running = await prisma.machine.findUnique({
+    const unchanged = await prisma.machine.findUnique({
       where: { id: machine.id },
     });
-    expect(running?.status).toBe("RUNNING");
-
-    const stopResponse = await POST(
-      createEventRequest(
-        { machineId: machine.id, type: "MACHINE_STOPPED" },
-        token
-      )
-    );
-    expect(stopResponse.status).toBe(201);
-
-    const offline = await prisma.machine.findUnique({
-      where: { id: machine.id },
-    });
-    expect(offline?.status).toBe("OFFLINE");
+    expect(unchanged?.status).toBe("OFFLINE");
   });
 
-  it("creates an overheating alert when temperature exceeds the threshold", async () => {
+  it("does not create alerts synchronously", async () => {
     const { token, organizationId } = await createAuthenticatedUser();
     const machine = await createMachine(organizationId);
 
@@ -195,8 +182,6 @@ describe("POST /api/events", () => {
       where: { organizationId, machineId: machine.id },
     });
 
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].type).toBe("MACHINE_OVERHEATING");
-    expect(alerts[0].severity).toBe("CRITICAL");
+    expect(alerts).toHaveLength(0);
   });
 });

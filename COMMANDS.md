@@ -100,6 +100,7 @@ psql postgresql://signalops:signalops@localhost:5435/signalops_olap
 |---------|---------|
 | `pnpm test` | Run tests in watch mode |
 | `pnpm test:run` | Run tests once (CI mode) |
+| `pnpm worker` | Start the async event processor that consumes Kafka CDC events |
 
 Tests use the `signalops_test` database defined by `TEST_DATABASE_URL` in `.env`.
 
@@ -189,6 +190,35 @@ docker exec -it signalops-kafka \
   --topic signalops.public.events \
   --from-beginning
 ```
+
+---
+
+## Async event processing
+
+Event ingestion writes to the OLTP database and returns immediately. A separate worker process consumes Debezium CDC events from Kafka and applies side effects (machine status updates and alert rules).
+
+```bash
+# Start the worker (run in a separate terminal)
+pnpm worker
+```
+
+### Worker behavior
+
+- Subscribes to `signalops.public.events`.
+- Retries failed processing up to 3 times with exponential backoff.
+- Sends permanently failed events to `signalops.public.events.dlq`.
+
+### Register the Debezium connector
+
+The connector is registered manually after `docker compose up`:
+
+```bash
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @infra/debezium-connector.json
+```
+
+The connector config uses `publication.autocreate.mode: filtered`, so Debezium creates `dbz_publication` automatically.
 
 ---
 

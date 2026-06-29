@@ -11,11 +11,13 @@
     "plugin.name": "pgoutput",
     "slot.name": "debezium",
     "publication.name": "dbz_publication",
-    "publication.autocreate.mode": "disabled",
+    "publication.autocreate.mode": "filtered",
     "table.include.list": "public.events",
     "snapshot.mode": "initial",
     "decimal.handling.mode": "string",
     "time.precision.mode": "connect",
-    "tombstones.on.delete": "false"
+    "tombstones.on.delete": "false",
+    "datatype.propagate.source.type": "true",
+    "column.propagate.source.type": "public.events.type"
   }
 }
